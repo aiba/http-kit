@@ -1,7 +1,8 @@
 (ns org.httpkit.client
   (:refer-clojure :exclude [get proxy])
   (:require [clojure.string :as str]
-            [org.httpkit.encode :refer [base64-encode]])
+            [org.httpkit.encode :refer [base64-encode]]
+            [org.httpkit.util])
   (:use [clojure.walk :only [prewalk]])
   (:import [org.httpkit.client HttpClient HttpClient$AddressFinder HttpClient$SSLEngineURIConfigurer
                                IResponseHandler RespListener IFilter RequestConfig]
@@ -93,33 +94,10 @@
 (defn max-body-filter "reject if response's body exceeds size in bytes"
   [size] (org.httpkit.client.IFilter$MaxBodyFilter. (int size)))
 
-;;; "Get the default client. Normally, you only need one client per application. You can config parameter per request basic"
-(defonce default-client (delay (HttpClient.)))
-
 (defn make-ssl-engine
   "Returns an SSLEngine using default or given SSLContext."
   (^SSLEngine [               ] (make-ssl-engine (SSLContext/getDefault)))
   (^SSLEngine [^SSLContext ctx] (.createSSLEngine ctx)))
-
-(defonce
-  ^{:dynamic true
-    :doc "Specifies the default HttpClient used by the `request` function.
-Value may be a delay.
-
-A common use case is to replace the default (non-SNI-capable) client with
-an SNI-capable one, e.g.:
-
-  (:require [org.httpkit.sni-client :as sni-client]) ; Needs Java >= 8
-
-  ;; Change default client for your whole application:
-  (alter-var-root #'org.httpkit.client/*default-client* (fn [_] sni-client/default-client))
-
-  ;; or temporarily change default client for a particular thread context:
-  (binding [org.httpkit.client/*default-client* sni-client/default-client]
-    <...>)
-
- See also `make-client`."}
-  *default-client* default-client)
 
 (defn make-client
   "Returns an HttpClient with specified options:
@@ -164,6 +142,20 @@ an SNI-capable one, e.g.:
                                   (format "Invalid event-names: (%s) %s"
                                     (class event-names) (pr-str event-names)))))
     bind-address))
+
+;;; "Get the default client. Normally, you only need one client per application. You can config parameter per request basic"
+(defonce default-client
+  (delay
+    (if (<= 8 (org.httpkit.util/java-version))
+      (do (require 'org.httpkit.sni-client)
+          (make-client {:ssl-configurer org.httpkit.sni-client/ssl-configurer}))
+      (HttpClient.))))
+
+(defonce
+  ^{:dynamic true
+    :doc "Specifies the default HttpClient used by the `request` function.
+Value may be a delay. See also `make-client`."}
+  *default-client* default-client)
 
 (def ^:dynamic ^:private *in-callback* false)
 
