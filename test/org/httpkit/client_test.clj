@@ -2,6 +2,7 @@
   (:use clojure.test
         [ring.adapter.jetty :only [run-jetty]]
         [org.httpkit.server :only [run-server]]
+        [org.httpkit.util :refer [java-version]]
         org.httpkit.test-util
         [clojure.string :only [split]]
         (compojure [core :only [defroutes GET PUT PATCH DELETE POST HEAD
@@ -342,7 +343,7 @@
                  :keepalive -1
                  :url url0}))))
 
-      (when (>= @@#'sni/java-version_ 11)
+      (when (>= (java-version) 11)
         ;; Specific type depends on JVM version- could be e/o
         ;; #{SSLHandshakeException RuntimeException ...}
         (is (instance? Exception
@@ -589,4 +590,3 @@
     (info "total" (count urls) "urls")
     (doall (map-indexed fetch-group-urls (partition 1000 urls)))
     (info "all downloaded")))
-
