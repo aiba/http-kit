@@ -143,12 +143,14 @@
                                     (class event-names) (pr-str event-names)))))
     bind-address))
 
+(when (<= 8 (org.httpkit.util/java-version))
+  (require 'org.httpkit.sni-client))
+
 ;;; "Get the default client. Normally, you only need one client per application. You can config parameter per request basic"
 (defonce default-client
   (delay
     (if (<= 8 (org.httpkit.util/java-version))
-      (do (require 'org.httpkit.sni-client)
-          (make-client {:ssl-configurer org.httpkit.sni-client/ssl-configurer}))
+      (make-client {:ssl-configurer org.httpkit.sni-client/ssl-configurer})
       (HttpClient.))))
 
 (defonce
