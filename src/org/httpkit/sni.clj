@@ -1,7 +1,5 @@
-(ns org.httpkit.sni-ssl
-  "Provides an SNI-capable SSL configurer, Ref. #335.
-  In a separate namespace from `org.httpkit.client` so that
-  http-kit can retain backwards-compatibility with JVM < 8."
+(ns org.httpkit.sni
+  "Provides an SNI-capable SSL configurer, Ref. #335, #393."
   (:require [org.httpkit.util :as util])
   (:import
    [java.net URI]

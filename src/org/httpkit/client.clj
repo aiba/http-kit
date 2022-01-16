@@ -1,8 +1,8 @@
 (ns org.httpkit.client
   (:refer-clojure :exclude [get proxy])
   (:require [clojure.string :as str]
-            [org.httpkit.encode :refer [base64-encode]]
-            [org.httpkit.util])
+            [org.httpkit.sni :as sni]
+            [org.httpkit.encode :refer [base64-encode]])
   (:use [clojure.walk :only [prewalk]])
   (:import [org.httpkit.client HttpClient HttpClient$AddressFinder HttpClient$SSLEngineURIConfigurer
                                IResponseHandler RespListener IFilter RequestConfig]
@@ -143,16 +143,10 @@
                                     (class event-names) (pr-str event-names)))))
     bind-address))
 
-(when (<= 8 (org.httpkit.util/java-version))
-  (require 'org.httpkit.sni-ssl))
-
 ;;; "Get the default client. Normally, you only need one client per application. You can config parameter per request basic"
 (defonce default-client
   (delay
-    (if (<= 8 (org.httpkit.util/java-version))
-      ;;(make-client {:ssl-configurer org.httpkit.sni-ssl/ssl-configurer})
-      (HttpClient.)
-      (HttpClient.))))
+    (make-client {:ssl-configurer sni/ssl-configurer})))
 
 (defonce
   ^{:dynamic true
