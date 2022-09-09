@@ -15,6 +15,7 @@
             [clojure.java.io :as io]
             [clj-http.client :as clj-http])
   (:import java.nio.ByteBuffer
+           java.nio.charset.StandardCharsets
            [org.httpkit HttpMethod HttpStatus HttpVersion DynamicBytes]
            [org.httpkit.client Decoder IRespListener ClientSslEngineFactory]
            [javax.net.ssl SSLHandshakeException SSLException SSLContext]))
@@ -57,6 +58,7 @@
                                      (assoc acc k updated)))
                                  {})
                                pr-str)))
+
   (PATCH "/patch" [] "hello world")
   (POST "/nested-param" [] (fn [req] (pr-str (:params req))))
   (ANY "/method" [] (fn [req]
@@ -80,7 +82,11 @@
                              :status 200
                              :headers {"content-type" "text/plain"}}))
   (GET "/test-header" [] (fn [{:keys [headers]}] (str (get headers "test-header"))))
-  (GET "/zip" [] (fn [req] {:body "hello world"})))
+  (GET "/zip" [] (fn [req] {:body "hello world"}))
+
+  (GET "/accept-encoding" [] (fn [req]
+                               {:headers {"x-sent-accept-encoding" (get-in req [:headers "accept-encoding"])}
+                                :status  200})))
 
 (use-fixtures :once
   (fn [f]
@@ -432,7 +438,18 @@
           request {:basic-auth ["user" "pass"]}]
       (is (= (keys (:headers (coerce-req request)))
              (remove #(= % "Content-Type")
-                     (keys (:headers (coerce-req (assoc request :multipart [{:name "foo" :content "bar"}]))))))))))
+                     (keys (:headers (coerce-req (assoc request :multipart [{:name "foo" :content "bar"}])))))))))
+  (testing "Multipart mixed requests shouldnt have Content-Disposition"
+    (let [coerce-req #'org.httpkit.client/coerce-req
+          request {:multipart [{:name "foo" :content "bar"}]
+                   :multipart-mixed? true}
+          coerced (coerce-req request)]
+      (is (clojure.string/starts-with?
+           (get-in coerced [:headers "Content-Type"] )
+           "multipart/mixed; boundary="))
+      (is ((complement clojure.string/includes?)
+           (-> StandardCharsets/UTF_8 (.decode (:body coerced)) (.toString))
+           "Content-Disposition")))))
 
 (deftest test-header-multiple-values
   (let [resp @(http/get "http://localhost:4347/multi-header" {:headers {"foo" ["bar" "baz"], "eggplant" "quux"}})
@@ -552,6 +569,27 @@
 
 (deftest zip
   (is (instance? DynamicBytes (:body @(http/get "http://localhost:4347/zip" {:as :none})))))
+
+(deftest adding-accept-encoding-header
+  (testing "if no Accept-Encoding header present, and not explicitly disabling auto compressing response, Accept-encoding header is automatically appended"
+    (let [response @(http/get "http://localhost:4347/accept-encoding")
+          sent-accept-encoding (:x-sent-accept-encoding (:headers response))]
+      (is (= sent-accept-encoding "gzip, deflate"))))
+
+  (testing "if Accept-Encoding present, the header is sent as-is"
+    (let [response @(http/get "http://localhost:4347/accept-encoding" {:headers {"accept-encoding" "identity"}})
+          sent-accept-encoding (:x-sent-accept-encoding (:headers response))]
+      (is (= sent-accept-encoding "identity"))))
+
+  (testing "if no Accept-Encoding present, and explicitly disabling auto compressing response, Accept-encoding header is not automatically appended"
+    (let [response @(http/get "http://localhost:4347/accept-encoding" {:auto-compression? false})
+          sent-accept-encoding (:x-sent-accept-encoding (:headers response))]
+      (is (nil? sent-accept-encoding))))
+
+  (testing "if Accept-Encoding present, and explicitly disabling auto compressing response, Accept-encoding header is automatically appended"
+    (let [response @(http/get "http://localhost:4347/accept-encoding" {:auto-compression? false :headers {"accept-encoding" "gzip"}})
+          sent-accept-encoding (:x-sent-accept-encoding (:headers response))]
+      (is (= sent-accept-encoding "gzip")))))
 
 ;; @(http/get "http://127.0.0.1:4348" {:headers {"Connection" "Close"}})
 

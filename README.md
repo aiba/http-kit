@@ -5,7 +5,7 @@
 **[CHANGELOG][]** | [API][] | current [Break Version][]:
 
 ```clojure
-[http-kit "2.5.3"]  ; Published by contributors, see CHANGELOG for details
+[http-kit "2.6.0"]  ; Published by contributors, see CHANGELOG for details (stable)
 [http-kit "2.1.19"] ; Legacy, published by @shenfeng
 ```
 
@@ -98,7 +98,7 @@ As of version `2.5.2` add the following flags:
 
 ## License
 
-Copyright &copy; 2012-2020 [@shenfeng][] and contributors. Distributed under the [Apache License Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
+Copyright &copy; 2012-2022 [@shenfeng][] and contributors. Distributed under the [Apache License Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
 
 [CHANGELOG]: https://github.com/http-kit/http-kit/releases
 [API]: http://http-kit.github.io/http-kit/

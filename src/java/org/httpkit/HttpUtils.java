@@ -37,6 +37,14 @@ class DateFormatter extends ThreadLocal<SimpleDateFormat> {
 
 public class HttpUtils {
 
+    // Files with size above this threshold should be memory mapped.
+    private static final int MAPPED_BUFFER_THRESH_SIZE_BYTES = initMappedThreshold();
+    private static int initMappedThreshold()
+    {
+        return 1024 * 1024
+            * Integer.getInteger("org.http-kit.memmap-file-threshold", 20);
+    }
+
     public static final Charset ASCII = Charset.forName("US-ASCII");
     public static final Charset UTF_8 = Charset.forName("utf8");
 
@@ -61,8 +69,8 @@ public class HttpUtils {
     public static final String TRANSFER_ENCODING = "transfer-encoding";
 
     public static final String CONTENT_ENCODING = "content-encoding";
-
     public static final String CONTENT_TYPE = "content-type";
+    public static final String CONTENT_LENGTH = "content-length";
 
     public static final String CHUNKED = "chunked";
 
@@ -77,8 +85,6 @@ public class HttpUtils {
     // public static final String LAST_MODIFIED = "Last-Modified";
 
     public static final String X_FORWARDED_FOR = "x-forwarded-for";
-
-    public static final String CONTENT_LENGTH = "content-length";
 
     // public static final String CACHE_CONTROL = "Cache-Control";
 
@@ -295,7 +301,7 @@ public class HttpUtils {
 
     public static ByteBuffer readAll(File f) throws IOException {
         int length = (int) f.length();
-        if (length >= 1024 * 1024 * 20) { // 20M
+        if (length >= MAPPED_BUFFER_THRESH_SIZE_BYTES) {
             FileInputStream fs = new FileInputStream(f);
             MappedByteBuffer buffer = fs.getChannel().map(MapMode.READ_ONLY, 0, length);
             fs.close();
@@ -436,8 +442,6 @@ public class HttpUtils {
         return result == null ? UTF_8 : result;
     }
 
-    public static final String CL = "Content-Length";
-
     public static ByteBuffer[] HttpEncode(int status, HeaderMap headers, Object body) {
         return HttpEncode(status, headers, body, null);
     }
@@ -450,16 +454,16 @@ public class HttpUtils {
             if (!CHUNKED.equals(headers.get("Transfer-Encoding"))) {
                 if (bodyBuffer != null) {
                     // trust the computed length
-                    headers.putOrReplace(CL, Integer.toString(bodyBuffer.remaining()));
+                    headers.putOrReplace(CONTENT_LENGTH, Integer.toString(bodyBuffer.remaining()));
                 } else {
-                    headers.putOrReplace(CL, "0");
+                    headers.putOrReplace(CONTENT_LENGTH, "0");
                 }
             }
         } catch (IOException e) {
             byte[] b = e.getMessage().getBytes(ASCII);
             status = 500;
             headers.clear();
-            headers.put(CL, Integer.toString(b.length));
+            headers.put(CONTENT_LENGTH, Integer.toString(b.length));
             bodyBuffer = ByteBuffer.wrap(b);
         }
         if (serverHeader != null && !headers.containsKey("Server")) {
