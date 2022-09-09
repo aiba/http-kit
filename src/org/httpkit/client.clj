@@ -58,7 +58,7 @@
 (comment (query-string {:k1 "v1" :k2 "v2" :k3 nil :k4 ["v4a" "v4b"] :k5 []}))
 
 (defn- coerce-req
-  [{:keys [url method body sslengine insecure? query-params form-params multipart] :as req}]
+  [{:keys [url method body sslengine insecure? query-params form-params multipart multipart-mixed?] :as req}]
   (let [r (assoc req
                  :url (if query-params
                         (if (neg? (.indexOf ^String url (int \?)))
@@ -77,8 +77,8 @@
             boundary (MultipartEntity/genBoundary entities)]
         (-> r
             (assoc-in [:headers "Content-Type"]
-                      (str "multipart/form-data; boundary=" boundary))
-            (assoc :body (MultipartEntity/encode boundary entities))))
+                      (str "multipart/" (if multipart-mixed? "mixed" "form-data")"; boundary=" boundary))
+            (assoc :body (MultipartEntity/encode boundary entities multipart-mixed?))))
       r)))
 
 ;; thread pool for executing callbacks, since they may take a long time to execute.
@@ -205,24 +205,24 @@ an SNI-capable one, e.g.:
     (println \"resp1's status: \" (:status @resp1))
     (println \"resp2's status: \" (:status @resp2)))
 
-  Output coercion:
-  ;; Return the body as a byte stream
-  (request {:url \"http://site.com/favicon.ico\" :as :stream})
-  ;; Coerce as a byte-array
-  (request {:url \"http://site.com/favicon.ico\" :as :byte-array})
-  ;; return the body as a string body
-  (request {:url \"http://site.com/string.txt\" :as :text})
-  ;; Try to automatically coerce the output based on the content-type header, currently supports :text :stream, (with automatic charset detection)
-  (request {:url \"http://site.com/string.txt\" :as :auto})
-  ;; return the body as is with no unzipping or coercion whatsoever. returns as org.httpkit.DynamicBytes
-  (request {:url \"http://site.com/favicon.ico\" :as :none})
+  Returned body type is controlled by `:as` option:
 
+   Without automatic unzipping:
+      `:none`           - org.httpkit.DynamicBytes
+      `:raw-byte-array` - bytes[]
+
+    With automatic unzipping:
+      `:byte-array`     - bytes[]
+      `:stream`         - ByteInputStream
+      `:text`           - String (charset based on Content-Type header)
+      `:auto`           - As `:text` or `:stream` (based on Content-Type header)
+                          
   Request options:
     :url :method :headers :timeout :connect-timeout :idle-timeout :query-params
     :as :form-params :client :body :basic-auth :user-agent :filter :worker-pool"
   [{:keys [client timeout connect-timeout idle-timeout filter worker-pool keepalive as follow-redirects
            max-redirects response trace-redirects allow-unsafe-redirect-methods proxy-host proxy-port
-           proxy-url tunnel? deadlock-guard?]
+           proxy-url tunnel? deadlock-guard? auto-compression?]
     :as opts
     :or {connect-timeout 60000
          idle-timeout 60000
@@ -237,7 +237,8 @@ an SNI-capable one, e.g.:
          deadlock-guard? true
          proxy-host nil
          proxy-port -1
-         proxy-url nil}}
+         proxy-url nil
+         auto-compression? true}}
    & [callback]]
   (let [client (or client (force *default-client*))
         {:keys [url method headers body sslengine]} (coerce-req opts)
@@ -281,14 +282,14 @@ an SNI-capable one, e.g.:
                   (onThrowable [this t]
                     (deliver-resp {:opts opts :error t})))
         listener (RespListener. handler filter worker-pool
-                                ;; 0 will return as DynamicBytes - i.e. you will need to handle unzip yourself
-                                ;; otherwise, there are 4 coercions supported for now
-                                (case as :none 0 :auto 1 :text 2 :stream 3 :byte-array 4))
+                                ;; 0 will return as DynamicBytes and 5 returns bytes[] - i.e. you will need to handle unzip yourself
+                                ;; otherwise, there are 5 coercions supported for now
+                                (case as :none 0 :auto 1 :text 2 :stream 3 :byte-array 4 :raw-byte-array 5))
         effective-proxy-url (if proxy-host (str proxy-host ":" proxy-port) proxy-url)
         connect-timeout (or timeout connect-timeout)
         idle-timeout    (or timeout idle-timeout)
         cfg (RequestConfig. method headers body connect-timeout idle-timeout
-              keepalive effective-proxy-url tunnel?)]
+              keepalive effective-proxy-url tunnel? auto-compression?)]
     (.exec ^HttpClient client url cfg sslengine listener)
     (if deadlock-guard?
       (deadlock-guard response)

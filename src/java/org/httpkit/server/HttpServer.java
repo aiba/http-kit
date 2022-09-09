@@ -167,7 +167,6 @@ public class HttpServer implements Runnable {
 
     private void decodeHttp(HttpAtta atta, SelectionKey key, SocketChannel ch) {
         try {
-            boolean sentContinue = false;
             do {
                 AsyncChannel channel = atta.channel;
                 HttpRequest request = atta.decoder.decode(buffer);
@@ -177,8 +176,9 @@ public class HttpServer implements Runnable {
                     if (status.get() != Status.RUNNING) {
                         request.isKeepAlive = false;
                     }
-
+                    request.setStartTime(System.nanoTime());
                     channel.reset(request);
+
                     if (request.isWebSocket) {
                         key.attach(new WsAtta(channel, maxWs));
                     } else {
@@ -189,9 +189,9 @@ public class HttpServer implements Runnable {
                     handler.handle(request, new RespCallback(key, this));
                     // pipelining not supported : need queue to ensure order
                     atta.decoder.reset();
-                } else if (!sentContinue && atta.decoder.requiresContinue()) {
+                } else if (atta.decoder.requiresContinue()) {
                     tryWrite(key, HttpEncode(100, new HeaderMap(), null, serverHeader));
-                    sentContinue = true;
+                    atta.decoder.setSentContinue();
                 }
             } while (buffer.hasRemaining()); // consume all
         } catch (ProtocolException e) {
@@ -387,7 +387,7 @@ public class HttpServer implements Runnable {
                 // jvm can catch any exception, including OOM
             } catch (Throwable e) { // catch any exception(including OOM), print it
                 status.set(Status.STOPPED);
-                errorLogger.log("http server loop error, should not happen", e);
+                errorLogger.log("http server loop error, see stack trace for details", e);
                 eventLogger.log(eventNames.serverLoopError);
             }
         }
